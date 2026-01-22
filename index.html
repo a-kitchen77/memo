@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>memo</title>
+  <meta name="description" content="シンプルで使いやすいモバイル向けメモアプリ">
+  <script src="https://unpkg.com/dexie@4/dist/dexie.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Noto Sans JP', 'sans-serif'],
+          },
+          colors: {
+            ios: {
+              bg: '#f2f2f7',
+              card: '#ffffff',
+              blue: '#007aff',
+              gray: '#8e8e93',
+              lightGray: '#c7c7cc',
+              separator: '#c6c6c8',
+            }
+          },
+          boxShadow: {
+            'ios': '0 1px 3px rgba(0, 0, 0, 0.08)',
+            'ios-lg': '0 4px 12px rgba(0, 0, 0, 0.1)',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background-color: #f2f2f7;
+      min-height: 100vh;
+      overscroll-behavior: none;
+    }
+
+    .accordion-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+
+    .accordion-content.open {
+      max-height: 2000px;
+      transition: max-height 0.5s ease-in;
+    }
+
+    .folder-arrow {
+      transition: transform 0.3s ease;
+    }
+
+    .folder-arrow.open {
+      transform: rotate(90deg);
+    }
+
+    .modal-overlay {
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal-content {
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+    }
+
+    .modal-overlay.open .modal-content {
+      transform: translateY(0);
+    }
+
+    .search-replace-panel {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .search-replace-panel.open {
+      max-height: 200px;
+    }
+
+    textarea:focus,
+    input:focus {
+      outline: none;
+    }
+
+    .memo-card {
+      transition: background-color 0.15s ease;
+    }
+
+    .memo-card:active {
+      background-color: #e5e5ea;
+    }
+
+    /* Safe area for notch devices */
+    .safe-top {
+      padding-top: env(safe-area-inset-top, 0px);
+    }
+
+    .safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 0px;
+    }
+  </style>
+</head>
+
+<body class="safe-top safe-bottom">
+  <!-- メイン画面 -->
+  <div id="mainScreen" class="min-h-screen">
+    <!-- ヘッダー -->
+    <header class="sticky top-0 z-10 bg-ios-bg/95 backdrop-blur-sm px-4 pt-3 pb-2">
+      <div class="flex items-center justify-between mb-3">
+        <h1 class="text-2xl font-bold text-gray-800">📝 memo</h1>
+        <button id="settingsBtn" class="p-2 text-ios-gray hover:text-ios-blue transition-colors">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- グローバル検索 -->
+      <div class="relative mb-3">
+        <input type="text" id="globalSearch" placeholder="すべてのメモを検索..."
+          class="w-full bg-ios-card rounded-xl px-4 py-2.5 pl-10 text-sm shadow-ios placeholder-ios-gray">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-ios-gray" fill="none" stroke="currentColor"
+          viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <button id="clearSearch" class="absolute right-3 top-1/2 -translate-y-1/2 hidden">
+          <svg class="w-5 h-5 text-ios-gray" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clip-rule="evenodd" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 新規メモ作成ボタン -->
+      <button id="newMemoBtn"
+        class="w-full bg-ios-blue text-white font-semibold py-3 rounded-xl shadow-ios-lg active:bg-blue-600 transition-colors flex items-center justify-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        新規メモを作成
+      </button>
+    </header>
+
+    <!-- 検索結果 -->
+    <div id="searchResults" class="hidden px-4 pb-4">
+      <h2 class="text-sm font-semibold text-ios-gray mb-2">検索結果</h2>
+      <div id="searchResultsList" class="space-y-2"></div>
+    </div>
+
+    <!-- フォルダリスト -->
+    <main id="folderList" class="px-4 pb-24">
+      <!-- フォルダはJSで動的に追加 -->
+    </main>
+
+    <!-- フォルダ追加ボタン -->
+    <div class="fixed bottom-6 right-6">
+      <button id="addFolderBtn"
+        class="w-14 h-14 bg-ios-card rounded-full shadow-ios-lg flex items-center justify-center active:bg-gray-100 transition-colors">
+        <svg class="w-6 h-6 text-ios-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- メモエディタモーダル -->
+  <div id="editorModal" class="modal-overlay fixed inset-0 z-50 bg-black/40">
+    <div class="modal-content absolute inset-0 bg-ios-bg flex flex-col">
+      <!-- エディタヘッダー -->
+      <header class="flex items-center justify-between px-4 py-3 bg-ios-card border-b border-ios-separator safe-top">
+        <button id="closeEditor" class="text-ios-blue font-medium py-2 px-1">
+          ← 戻る
+        </button>
+        <div class="flex gap-2">
+          <button id="exportBtn" class="text-ios-blue font-medium py-2 px-3 rounded-lg active:bg-gray-100">
+            📤 保存
+          </button>
+          <button id="deleteBtn" class="text-red-500 font-medium py-2 px-3 rounded-lg active:bg-gray-100 hidden">
+            🗑️
+          </button>
+        </div>
+      </header>
+
+      <!-- フォルダ選択 -->
+      <div class="px-4 py-3 bg-ios-card border-b border-ios-separator">
+        <label class="text-sm text-ios-gray">保存先フォルダ</label>
+        <div class="flex gap-2 mt-1">
+          <select id="folderSelect" class="flex-1 bg-ios-bg rounded-lg px-3 py-2.5 text-sm font-medium">
+            <option value="">フォルダを選択...</option>
+          </select>
+          <button id="addFolderInlineBtn"
+            class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium active:bg-blue-600">
+            ＋
+          </button>
+        </div>
+        <!-- インライン新規フォルダ作成 -->
+        <div id="inlineFolderCreate" class="hidden mt-2">
+          <div class="flex gap-2">
+            <input type="text" id="inlineFolderName" placeholder="新しいフォルダ名"
+              class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
+            <button id="confirmInlineFolder" class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium">
+              作成
+            </button>
+            <button id="cancelInlineFolder" class="text-ios-gray px-2 py-2 text-sm">
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- タイトル入力 -->
+      <div class="px-4 py-3 bg-ios-card border-b border-ios-separator">
+        <input type="text" id="memoTitle" placeholder="タイトル（空欄可）"
+          class="w-full text-lg font-semibold bg-transparent placeholder-ios-gray">
+      </div>
+
+      <!-- 検索・置換パネル -->
+      <div id="searchReplacePanel" class="search-replace-panel bg-ios-card border-b border-ios-separator">
+        <div class="px-4 py-3 space-y-2">
+          <div class="flex gap-2">
+            <input type="text" id="searchText" placeholder="検索..."
+              class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
+            <button id="findNextBtn" class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium">
+              次へ
+            </button>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" id="replaceText" placeholder="置換..."
+              class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
+            <button id="replaceBtn" class="bg-ios-gray text-white px-3 py-2 rounded-lg text-sm font-medium">
+              置換
+            </button>
+            <button id="replaceAllBtn" class="bg-ios-gray text-white px-3 py-2 rounded-lg text-sm font-medium">
+              全て
+            </button>
+          </div>
+          <div id="searchInfo" class="text-xs text-ios-gray"></div>
+        </div>
+      </div>
+
+      <!-- ツールバー -->
+      <div class="px-4 py-2 bg-ios-card border-b border-ios-separator flex items-center justify-between">
+        <button id="toggleSearchReplace" class="flex items-center gap-1 text-ios-blue text-sm font-medium py-1">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          検索・置換
+        </button>
+        <div id="charCount" class="text-sm text-ios-gray">0 文字</div>
+      </div>
+
+      <!-- 本文入力 -->
+      <div class="flex-1 overflow-hidden">
+        <textarea id="memoContent" placeholder="メモを入力..."
+          class="w-full h-full px-4 py-3 bg-ios-card text-base leading-relaxed resize-none"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- フォルダ追加モーダル -->
+  <div id="folderModal" class="modal-overlay fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-8">
+    <div class="modal-content bg-ios-card rounded-2xl w-full max-w-sm shadow-ios-lg transform translate-y-0">
+      <div class="p-6">
+        <h2 class="text-lg font-bold text-center mb-4">新しいフォルダ</h2>
+        <input type="text" id="folderName" placeholder="フォルダ名を入力"
+          class="w-full bg-ios-bg rounded-xl px-4 py-3 text-center">
+      </div>
+      <div class="flex border-t border-ios-separator">
+        <button id="cancelFolder" class="flex-1 py-3 text-ios-blue font-medium border-r border-ios-separator">
+          キャンセル
+        </button>
+        <button id="confirmFolder" class="flex-1 py-3 text-ios-blue font-semibold">
+          作成
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 確認ダイアログ -->
+  <div id="confirmModal" class="modal-overlay fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-8">
+    <div class="modal-content bg-ios-card rounded-2xl w-full max-w-sm shadow-ios-lg transform translate-y-0">
+      <div class="p-6">
+        <h2 id="confirmTitle" class="text-lg font-bold text-center mb-2">確認</h2>
+        <p id="confirmMessage" class="text-center text-ios-gray"></p>
+      </div>
+      <div class="flex border-t border-ios-separator">
+        <button id="confirmCancel" class="flex-1 py-3 text-ios-blue font-medium border-r border-ios-separator">
+          キャンセル
+        </button>
+        <button id="confirmOk" class="flex-1 py-3 text-red-500 font-semibold">
+          削除
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 設定モーダル -->
+  <div id="settingsModal" class="modal-overlay fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-8">
+    <div class="modal-content bg-ios-card rounded-2xl w-full max-w-sm shadow-ios-lg transform translate-y-0">
+      <div class="p-6">
+        <h2 class="text-lg font-bold text-center mb-4">⚙️ 設定</h2>
+
+        <div class="space-y-3">
+          <!-- バックアップ作成 -->
+          <button id="backupBtn"
+            class="w-full bg-ios-blue text-white py-3 rounded-xl font-medium active:bg-blue-600 flex items-center justify-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            バックアップを作成
+          </button>
+
+          <!-- 復元 -->
+          <label
+            class="w-full bg-green-500 text-white py-3 rounded-xl font-medium active:bg-green-600 flex items-center justify-center gap-2 cursor-pointer">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            復元する
+            <input type="file" id="restoreFile" accept=".json" class="hidden">
+          </label>
+
+          <!-- 全データ削除 -->
+          <button id="resetDataBtn"
+            class="w-full bg-red-500 text-white py-3 rounded-xl font-medium active:bg-red-600 flex items-center justify-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            全データを削除
+          </button>
+        </div>
+      </div>
+      <div class="border-t border-ios-separator">
+        <button id="closeSettings" class="w-full py-3 text-ios-blue font-semibold">
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

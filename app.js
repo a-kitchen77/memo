@@ -1,0 +1,811 @@
+// ========================================
+// memo - メモアプリ (IndexedDB版)
+// ========================================
+
+// Dexieデータベース初期化
+const db = new Dexie('MemoDB');
+db.version(1).stores({
+  folders: 'id, name, createdAt, updatedAt',
+  memos: 'id, folderId, title, createdAt, updatedAt'
+});
+
+// ========================================
+// データ管理（非同期版）
+// ========================================
+const Store = {
+  // ユニークID生成
+  generateId() {
+    return Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9);
+  },
+
+  // フォルダ操作
+  async getFolders() {
+    return await db.folders.toArray();
+  },
+
+  async addFolder(name) {
+    const now = new Date().toISOString();
+    const folder = {
+      id: this.generateId(),
+      name,
+      createdAt: now,
+      updatedAt: now
+    };
+    await db.folders.add(folder);
+    return folder;
+  },
+
+  async deleteFolder(folderId) {
+    await db.folders.delete(folderId);
+    // フォルダ内のメモも削除
+    await db.memos.where('folderId').equals(folderId).delete();
+  },
+
+  async updateFolderTimestamp(folderId) {
+    await db.folders.update(folderId, { updatedAt: new Date().toISOString() });
+  },
+
+  // メモ操作
+  async getMemos() {
+    return await db.memos.toArray();
+  },
+
+  async addMemo(memo) {
+    const now = new Date().toISOString();
+    const newMemo = {
+      id: this.generateId(),
+      ...memo,
+      createdAt: now,
+      updatedAt: now
+    };
+    await db.memos.add(newMemo);
+    // フォルダの更新日時も更新
+    await this.updateFolderTimestamp(memo.folderId);
+    return newMemo;
+  },
+
+  async updateMemo(id, updates) {
+    const updateData = { ...updates, updatedAt: new Date().toISOString() };
+    await db.memos.update(id, updateData);
+    if (updates.folderId) {
+      await this.updateFolderTimestamp(updates.folderId);
+    }
+    return await db.memos.get(id);
+  },
+
+  async deleteMemo(id) {
+    await db.memos.delete(id);
+  },
+
+  async getMemosByFolder(folderId) {
+    const memos = await db.memos.where('folderId').equals(folderId).toArray();
+    return memos.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  },
+
+  async searchMemos(query) {
+    const q = query.toLowerCase();
+    const memos = await db.memos.toArray();
+    return memos.filter(m =>
+      (m.title && m.title.toLowerCase().includes(q)) ||
+      (m.content && m.content.toLowerCase().includes(q))
+    ).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  },
+
+  // バックアップ/復元
+  async exportAllData() {
+    const folders = await this.getFolders();
+    const memos = await this.getMemos();
+    return { folders, memos, exportedAt: new Date().toISOString() };
+  },
+
+  async importData(data) {
+    // 既存データをクリア
+    await db.folders.clear();
+    await db.memos.clear();
+    // 新しいデータを追加
+    if (data.folders && data.folders.length > 0) {
+      await db.folders.bulkAdd(data.folders);
+    }
+    if (data.memos && data.memos.length > 0) {
+      await db.memos.bulkAdd(data.memos);
+    }
+  },
+
+  async clearAllData() {
+    await db.folders.clear();
+    await db.memos.clear();
+  }
+};
+
+// ========================================
+// LocalStorage → IndexedDB 移行
+// ========================================
+async function migrateFromLocalStorage() {
+  const oldFolders = localStorage.getItem('ayumemo_folders');
+  const oldMemos = localStorage.getItem('ayumemo_memos');
+
+  if (oldFolders || oldMemos) {
+    console.log('LocalStorageからデータを移行中...');
+    try {
+      if (oldFolders) {
+        const folders = JSON.parse(oldFolders);
+        for (const folder of folders) {
+          await db.folders.put(folder);
+        }
+      }
+      if (oldMemos) {
+        const memos = JSON.parse(oldMemos);
+        for (const memo of memos) {
+          await db.memos.put(memo);
+        }
+      }
+      // 移行完了後、LocalStorageをクリア
+      localStorage.removeItem('ayumemo_folders');
+      localStorage.removeItem('ayumemo_memos');
+      console.log('データ移行完了');
+    } catch (e) {
+      console.error('データ移行エラー:', e);
+    }
+  }
+}
+
+// 未分類フォルダのIDを取得または作成
+async function getOrCreateUncategorizedFolder() {
+  const folders = await Store.getFolders();
+  let uncategorized = folders.find(f => f.name === '未分類');
+  if (!uncategorized) {
+    uncategorized = await Store.addFolder('未分類');
+  }
+  return uncategorized;
+}
+
+// 初期データ
+async function initializeData() {
+  const folders = await Store.getFolders();
+  if (folders.length === 0) {
+    await Store.addFolder('未分類');
+    await Store.addFolder('メモ');
+    await Store.addFolder('仕事');
+    await Store.addFolder('プライベート');
+  }
+}
+
+// ========================================
+// DOM要素
+// ========================================
+const elements = {
+  folderList: document.getElementById('folderList'),
+  newMemoBtn: document.getElementById('newMemoBtn'),
+  addFolderBtn: document.getElementById('addFolderBtn'),
+  globalSearch: document.getElementById('globalSearch'),
+  clearSearch: document.getElementById('clearSearch'),
+  searchResults: document.getElementById('searchResults'),
+  searchResultsList: document.getElementById('searchResultsList'),
+
+  // 設定
+  settingsBtn: document.getElementById('settingsBtn'),
+  settingsModal: document.getElementById('settingsModal'),
+  closeSettings: document.getElementById('closeSettings'),
+  backupBtn: document.getElementById('backupBtn'),
+  restoreFile: document.getElementById('restoreFile'),
+  resetDataBtn: document.getElementById('resetDataBtn'),
+
+  // エディタモーダル
+  editorModal: document.getElementById('editorModal'),
+  closeEditor: document.getElementById('closeEditor'),
+  folderSelect: document.getElementById('folderSelect'),
+  memoTitle: document.getElementById('memoTitle'),
+  memoContent: document.getElementById('memoContent'),
+  charCount: document.getElementById('charCount'),
+  exportBtn: document.getElementById('exportBtn'),
+  deleteBtn: document.getElementById('deleteBtn'),
+
+  // インラインフォルダ作成
+  addFolderInlineBtn: document.getElementById('addFolderInlineBtn'),
+  inlineFolderCreate: document.getElementById('inlineFolderCreate'),
+  inlineFolderName: document.getElementById('inlineFolderName'),
+  confirmInlineFolder: document.getElementById('confirmInlineFolder'),
+  cancelInlineFolder: document.getElementById('cancelInlineFolder'),
+
+  // 検索・置換
+  toggleSearchReplace: document.getElementById('toggleSearchReplace'),
+  searchReplacePanel: document.getElementById('searchReplacePanel'),
+  searchText: document.getElementById('searchText'),
+  replaceText: document.getElementById('replaceText'),
+  findNextBtn: document.getElementById('findNextBtn'),
+  replaceBtn: document.getElementById('replaceBtn'),
+  replaceAllBtn: document.getElementById('replaceAllBtn'),
+  searchInfo: document.getElementById('searchInfo'),
+
+  // フォルダモーダル
+  folderModal: document.getElementById('folderModal'),
+  folderName: document.getElementById('folderName'),
+  cancelFolder: document.getElementById('cancelFolder'),
+  confirmFolder: document.getElementById('confirmFolder'),
+
+  // 確認モーダル
+  confirmModal: document.getElementById('confirmModal'),
+  confirmTitle: document.getElementById('confirmTitle'),
+  confirmMessage: document.getElementById('confirmMessage'),
+  confirmCancel: document.getElementById('confirmCancel'),
+  confirmOk: document.getElementById('confirmOk')
+};
+
+// 状態
+let currentMemoId = null;
+let openFolders = new Set();
+let searchMatchIndex = 0;
+let searchMatches = [];
+let confirmCallback = null;
+
+// ========================================
+// 描画関数
+// ========================================
+async function renderFolders() {
+  // フォルダを更新日時順（最新が上）にソート
+  const folders = (await Store.getFolders()).sort((a, b) => {
+    const dateA = new Date(a.updatedAt || a.createdAt || 0);
+    const dateB = new Date(b.updatedAt || b.createdAt || 0);
+    return dateB - dateA;
+  });
+
+  let html = '';
+  for (const folder of folders) {
+    const memos = await Store.getMemosByFolder(folder.id);
+    const isOpen = openFolders.has(folder.id);
+
+    html += `
+      <div class="mb-3" data-folder-id="${folder.id}">
+        <div class="bg-ios-card rounded-xl shadow-ios overflow-hidden">
+          <div 
+            class="flex items-center justify-between px-4 py-3.5 cursor-pointer active:bg-gray-50"
+            onclick="toggleFolder('${folder.id}')"
+          >
+            <div class="flex items-center gap-3">
+              <span class="text-xl">📁</span>
+              <span class="font-semibold text-gray-800">${escapeHtml(folder.name)}</span>
+              <span class="text-sm text-ios-gray">${memos.length}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button 
+                class="p-2 text-ios-gray hover:text-red-500 transition-colors"
+                onclick="event.stopPropagation(); deleteFolder('${folder.id}')"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+              </button>
+              <svg class="w-5 h-5 text-ios-gray folder-arrow ${isOpen ? 'open' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </div>
+          </div>
+          
+          <div class="accordion-content ${isOpen ? 'open' : ''}">
+            <div class="border-t border-ios-separator">
+              ${memos.length > 0 ? memos.map((memo, index) => renderMemoCard(memo, index === memos.length - 1)).join('') : `
+                <div class="px-4 py-6 text-center text-ios-gray text-sm">
+                  メモがありません
+                </div>
+              `}
+              <button 
+                class="w-full px-4 py-3 text-ios-blue text-sm font-medium text-center border-t border-ios-separator active:bg-gray-50"
+                onclick="openEditorForFolder('${folder.id}')"
+              >
+                ＋ このフォルダに追加
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  elements.folderList.innerHTML = html;
+
+  if (folders.length === 0) {
+    elements.folderList.innerHTML = `
+      <div class="text-center py-12 text-ios-gray">
+        <p class="text-lg mb-2">フォルダがありません</p>
+        <p class="text-sm">右下のボタンからフォルダを作成してください</p>
+      </div>
+    `;
+  }
+}
+
+// メモカードを描画
+function renderMemoCard(memo, isLast) {
+  const lines = (memo.content || '').split('\n').filter(l => l.trim());
+  let line1, line2;
+
+  if (memo.title && memo.title.trim()) {
+    line1 = memo.title;
+    line2 = lines[0] || '';
+  } else {
+    line1 = lines[0] || '無題のメモ';
+    line2 = lines[1] || '';
+  }
+
+  return `
+    <div 
+      class="memo-card px-4 py-3 cursor-pointer ${!isLast ? 'border-b border-ios-separator' : ''}"
+      onclick="openMemo('${memo.id}')"
+    >
+      <div class="font-semibold text-gray-800 truncate">${escapeHtml(line1)}</div>
+      <div class="text-sm text-ios-gray truncate mt-0.5">${escapeHtml(line2) || '&nbsp;'}</div>
+    </div>
+  `;
+}
+
+// フォルダの開閉
+function toggleFolder(folderId) {
+  if (openFolders.has(folderId)) {
+    openFolders.delete(folderId);
+  } else {
+    openFolders.add(folderId);
+  }
+  renderFolders();
+}
+
+// フォルダ選択を更新
+async function updateFolderSelect(selectedId = '') {
+  const folders = await Store.getFolders();
+  elements.folderSelect.innerHTML = `
+    <option value="">フォルダを選択...</option>
+    ${folders.map(f => `
+      <option value="${f.id}" ${f.id === selectedId ? 'selected' : ''}>${escapeHtml(f.name)}</option>
+    `).join('')}
+  `;
+}
+
+// ========================================
+// エディタ操作
+// ========================================
+async function openEditor() {
+  currentMemoId = null;
+  elements.memoTitle.value = '';
+  elements.memoContent.value = '';
+  updateCharCount();
+  await updateFolderSelect();
+  elements.deleteBtn.classList.add('hidden');
+  elements.searchReplacePanel.classList.remove('open');
+  elements.inlineFolderCreate.classList.add('hidden');
+  elements.editorModal.classList.add('open');
+}
+
+// 特定のフォルダにメモを追加
+async function openEditorForFolder(folderId) {
+  currentMemoId = null;
+  elements.memoTitle.value = '';
+  elements.memoContent.value = '';
+  updateCharCount();
+  await updateFolderSelect(folderId);
+  elements.deleteBtn.classList.add('hidden');
+  elements.searchReplacePanel.classList.remove('open');
+  elements.inlineFolderCreate.classList.add('hidden');
+  elements.editorModal.classList.add('open');
+}
+
+// メモを開く（編集）
+async function openMemo(memoId) {
+  const memos = await Store.getMemos();
+  const memo = memos.find(m => m.id === memoId);
+  if (!memo) return;
+
+  currentMemoId = memoId;
+  elements.memoTitle.value = memo.title || '';
+  elements.memoContent.value = memo.content || '';
+  updateCharCount();
+  await updateFolderSelect(memo.folderId);
+  elements.deleteBtn.classList.remove('hidden');
+  elements.searchReplacePanel.classList.remove('open');
+  elements.inlineFolderCreate.classList.add('hidden');
+  elements.editorModal.classList.add('open');
+}
+
+// エディタを閉じる
+async function closeEditor() {
+  // 自動保存
+  let folderId = elements.folderSelect.value;
+  const title = elements.memoTitle.value.trim();
+  const content = elements.memoContent.value;
+
+  // フォルダ未選択の場合は「未分類」に保存
+  if (!folderId && (title || content.trim())) {
+    const uncategorized = await getOrCreateUncategorizedFolder();
+    folderId = uncategorized.id;
+  }
+
+  if (folderId && (title || content.trim())) {
+    if (currentMemoId) {
+      await Store.updateMemo(currentMemoId, { folderId, title, content });
+    } else {
+      await Store.addMemo({ folderId, title, content });
+    }
+    await renderFolders();
+    await renderSearchResults();
+  }
+
+  elements.editorModal.classList.remove('open');
+}
+
+// 文字数カウント
+function updateCharCount() {
+  const count = elements.memoContent.value.length;
+  elements.charCount.textContent = `${count.toLocaleString()} 文字`;
+}
+
+// ========================================
+// 検索・置換
+// ========================================
+function toggleSearchReplace() {
+  elements.searchReplacePanel.classList.toggle('open');
+  if (elements.searchReplacePanel.classList.contains('open')) {
+    elements.searchText.focus();
+  }
+}
+
+function findMatches() {
+  const query = elements.searchText.value;
+  const content = elements.memoContent.value;
+
+  if (!query) {
+    searchMatches = [];
+    elements.searchInfo.textContent = '';
+    return;
+  }
+
+  searchMatches = [];
+  let index = 0;
+  const lowerContent = content.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+
+  while ((index = lowerContent.indexOf(lowerQuery, index)) !== -1) {
+    searchMatches.push(index);
+    index += query.length;
+  }
+
+  if (searchMatches.length > 0) {
+    searchMatchIndex = 0;
+    elements.searchInfo.textContent = `${searchMatchIndex + 1} / ${searchMatches.length} 件`;
+    highlightMatch();
+  } else {
+    elements.searchInfo.textContent = '見つかりませんでした';
+  }
+}
+
+function findNext() {
+  if (searchMatches.length === 0) {
+    findMatches();
+    return;
+  }
+
+  searchMatchIndex = (searchMatchIndex + 1) % searchMatches.length;
+  elements.searchInfo.textContent = `${searchMatchIndex + 1} / ${searchMatches.length} 件`;
+  highlightMatch();
+}
+
+function highlightMatch() {
+  if (searchMatches.length === 0) return;
+
+  const pos = searchMatches[searchMatchIndex];
+  const len = elements.searchText.value.length;
+  elements.memoContent.focus();
+  elements.memoContent.setSelectionRange(pos, pos + len);
+}
+
+function replaceOne() {
+  const query = elements.searchText.value;
+  const replacement = elements.replaceText.value;
+
+  if (!query || searchMatches.length === 0) return;
+
+  const content = elements.memoContent.value;
+  const pos = searchMatches[searchMatchIndex];
+
+  elements.memoContent.value =
+    content.substring(0, pos) +
+    replacement +
+    content.substring(pos + query.length);
+
+  updateCharCount();
+  findMatches();
+}
+
+function replaceAll() {
+  const query = elements.searchText.value;
+  const replacement = elements.replaceText.value;
+
+  if (!query) return;
+
+  const regex = new RegExp(escapeRegex(query), 'gi');
+  elements.memoContent.value = elements.memoContent.value.replace(regex, replacement);
+
+  updateCharCount();
+  findMatches();
+  elements.searchInfo.textContent = 'すべて置換しました';
+}
+
+// ========================================
+// メモエクスポート
+// ========================================
+function exportMemo() {
+  const title = elements.memoTitle.value.trim() || '無題のメモ';
+  const content = elements.memoContent.value;
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title}.txt`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+// ========================================
+// 削除操作
+// ========================================
+async function deleteMemo() {
+  if (!currentMemoId) return;
+
+  showConfirm('メモを削除', 'このメモを削除しますか？', async () => {
+    await Store.deleteMemo(currentMemoId);
+    elements.editorModal.classList.remove('open');
+    await renderFolders();
+    await renderSearchResults();
+  });
+}
+
+async function deleteFolder(folderId) {
+  const folders = await Store.getFolders();
+  const folder = folders.find(f => f.id === folderId);
+  const memos = await Store.getMemosByFolder(folderId);
+
+  showConfirm(
+    'フォルダを削除',
+    `「${folder.name}」を削除しますか？${memos.length > 0 ? `\n（${memos.length}件のメモも削除されます）` : ''}`,
+    async () => {
+      await Store.deleteFolder(folderId);
+      openFolders.delete(folderId);
+      await renderFolders();
+    }
+  );
+}
+
+function showConfirm(title, message, callback) {
+  elements.confirmTitle.textContent = title;
+  elements.confirmMessage.textContent = message;
+  confirmCallback = callback;
+  elements.confirmModal.classList.add('open');
+}
+
+// ========================================
+// フォルダモーダル
+// ========================================
+function showFolderModal() {
+  elements.folderName.value = '';
+  elements.folderModal.classList.add('open');
+  setTimeout(() => elements.folderName.focus(), 300);
+}
+
+// ========================================
+// グローバル検索
+// ========================================
+async function renderSearchResults() {
+  const query = elements.globalSearch.value.trim();
+
+  if (!query) {
+    elements.searchResults.classList.add('hidden');
+    elements.folderList.classList.remove('hidden');
+    elements.clearSearch.classList.add('hidden');
+    return;
+  }
+
+  elements.clearSearch.classList.remove('hidden');
+  const results = await Store.searchMemos(query);
+  const folders = await Store.getFolders();
+
+  if (results.length === 0) {
+    elements.searchResultsList.innerHTML = `
+      <div class="text-center py-8 text-ios-gray">
+        「${escapeHtml(query)}」は見つかりませんでした
+      </div>
+    `;
+  } else {
+    elements.searchResultsList.innerHTML = results.map(memo => {
+      const folder = folders.find(f => f.id === memo.folderId);
+      const lines = (memo.content || '').split('\n').filter(l => l.trim());
+      let line1 = memo.title || lines[0] || '無題のメモ';
+      let line2 = memo.title ? (lines[0] || '') : (lines[1] || '');
+
+      return `
+        <div 
+          class="bg-ios-card rounded-xl shadow-ios px-4 py-3 cursor-pointer active:bg-gray-50"
+          onclick="openMemo('${memo.id}')"
+        >
+          <div class="text-xs text-ios-blue mb-1">📁 ${escapeHtml(folder?.name || '不明')}</div>
+          <div class="font-semibold text-gray-800 truncate">${highlightText(line1, query)}</div>
+          <div class="text-sm text-ios-gray truncate mt-0.5">${highlightText(line2, query)}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  elements.searchResults.classList.remove('hidden');
+  elements.folderList.classList.add('hidden');
+}
+
+// テキストハイライト
+function highlightText(text, query) {
+  if (!query) return escapeHtml(text);
+  const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+  return escapeHtml(text).replace(regex, '<mark class="bg-yellow-200 rounded px-0.5">$1</mark>');
+}
+
+// ========================================
+// バックアップ・復元
+// ========================================
+async function createBackup() {
+  const data = await Store.exportAllData();
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `memo_backup_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+  elements.settingsModal.classList.remove('open');
+}
+
+async function restoreFromBackup(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    if (!data.folders || !data.memos) {
+      alert('無効なバックアップファイルです');
+      return;
+    }
+
+    if (!confirm(`${data.folders.length}個のフォルダと${data.memos.length}個のメモを復元しますか？\n\n※現在のデータは上書きされます`)) {
+      return;
+    }
+
+    await Store.importData(data);
+    elements.settingsModal.classList.remove('open');
+    await renderFolders();
+    alert('復元が完了しました！');
+  } catch (e) {
+    alert('復元に失敗しました: ' + e.message);
+  }
+}
+
+// ========================================
+// ユーティリティ
+// ========================================
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ========================================
+// イベントリスナー
+// ========================================
+elements.newMemoBtn.addEventListener('click', openEditor);
+elements.addFolderBtn.addEventListener('click', showFolderModal);
+elements.closeEditor.addEventListener('click', closeEditor);
+elements.memoContent.addEventListener('input', updateCharCount);
+elements.toggleSearchReplace.addEventListener('click', toggleSearchReplace);
+elements.searchText.addEventListener('input', findMatches);
+elements.findNextBtn.addEventListener('click', findNext);
+elements.replaceBtn.addEventListener('click', replaceOne);
+elements.replaceAllBtn.addEventListener('click', replaceAll);
+elements.exportBtn.addEventListener('click', exportMemo);
+elements.deleteBtn.addEventListener('click', deleteMemo);
+
+elements.globalSearch.addEventListener('input', renderSearchResults);
+elements.clearSearch.addEventListener('click', () => {
+  elements.globalSearch.value = '';
+  renderSearchResults();
+});
+
+// 設定モーダル
+elements.settingsBtn.addEventListener('click', () => {
+  elements.settingsModal.classList.add('open');
+});
+elements.closeSettings.addEventListener('click', () => {
+  elements.settingsModal.classList.remove('open');
+});
+elements.backupBtn.addEventListener('click', createBackup);
+elements.restoreFile.addEventListener('change', (e) => {
+  if (e.target.files[0]) {
+    restoreFromBackup(e.target.files[0]);
+    e.target.value = '';
+  }
+});
+elements.resetDataBtn.addEventListener('click', async () => {
+  if (confirm('すべてのフォルダとメモを削除しますか？\nこの操作は取り消せません。')) {
+    await Store.clearAllData();
+    elements.settingsModal.classList.remove('open');
+    await initializeData();
+    await renderFolders();
+  }
+});
+
+// インラインフォルダ作成
+elements.addFolderInlineBtn.addEventListener('click', () => {
+  elements.inlineFolderCreate.classList.remove('hidden');
+  elements.inlineFolderName.value = '';
+  elements.inlineFolderName.focus();
+});
+elements.cancelInlineFolder.addEventListener('click', () => {
+  elements.inlineFolderCreate.classList.add('hidden');
+});
+elements.confirmInlineFolder.addEventListener('click', async () => {
+  const name = elements.inlineFolderName.value.trim();
+  if (name) {
+    const folder = await Store.addFolder(name);
+    await updateFolderSelect(folder.id);
+    elements.inlineFolderCreate.classList.add('hidden');
+  }
+});
+elements.inlineFolderName.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    elements.confirmInlineFolder.click();
+  }
+});
+
+// フォルダモーダル
+elements.cancelFolder.addEventListener('click', () => {
+  elements.folderModal.classList.remove('open');
+});
+
+elements.confirmFolder.addEventListener('click', async () => {
+  const name = elements.folderName.value.trim();
+  if (name) {
+    await Store.addFolder(name);
+    await renderFolders();
+  }
+  elements.folderModal.classList.remove('open');
+});
+
+elements.folderName.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    elements.confirmFolder.click();
+  }
+});
+
+// 確認モーダル
+elements.confirmCancel.addEventListener('click', () => {
+  elements.confirmModal.classList.remove('open');
+  confirmCallback = null;
+});
+
+elements.confirmOk.addEventListener('click', () => {
+  if (confirmCallback) {
+    confirmCallback();
+  }
+  elements.confirmModal.classList.remove('open');
+  confirmCallback = null;
+});
+
+// ========================================
+// 初期化
+// ========================================
+async function init() {
+  await migrateFromLocalStorage();
+  await initializeData();
+  await renderFolders();
+}
+
+init();
