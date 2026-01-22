@@ -326,12 +326,17 @@ function renderMemoCard(memo, isLast) {
     line2 = lines[1] || '';
   }
 
+  const updatedAt = formatDate(memo.updatedAt || memo.createdAt);
+
   return `
     <div 
       class="memo-card px-4 py-3 cursor-pointer ${!isLast ? 'border-b border-ios-separator' : ''}"
       onclick="openMemo('${memo.id}')"
     >
-      <div class="font-semibold text-gray-800 truncate">${escapeHtml(line1)}</div>
+      <div class="flex items-center justify-between gap-2">
+        <div class="font-semibold text-gray-800 truncate flex-1">${escapeHtml(line1)}</div>
+        <div class="text-xs text-ios-lightGray whitespace-nowrap">${updatedAt}</div>
+      </div>
       <div class="text-sm text-ios-gray truncate mt-0.5">${escapeHtml(line2) || '&nbsp;'}</div>
     </div>
   `;
@@ -692,6 +697,31 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// 日付を見やすくフォーマット
+function formatDate(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const time = `${hours}:${minutes}`;
+
+  if (isToday) {
+    return `今日 ${time}`;
+  } else if (isYesterday) {
+    return `昨日 ${time}`;
+  } else {
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${month}/${day} ${time}`;
+  }
 }
 
 function escapeRegex(string) {
