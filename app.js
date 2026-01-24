@@ -41,6 +41,13 @@ const Store = {
     await db.memos.where('folderId').equals(folderId).delete();
   },
 
+  async updateFolder(id, name) {
+    await db.folders.update(id, {
+      name,
+      updatedAt: new Date().toISOString()
+    });
+  },
+
   async updateFolderTimestamp(folderId) {
     await db.folders.update(folderId, { updatedAt: new Date().toISOString() });
   },
@@ -272,6 +279,7 @@ let searchMatchIndex = 0;
 let searchMatches = [];
 let confirmCallback = null;
 let isPreviewMode = false;
+let editingFolderId = null; // null:新規作成, ID string:編集
 
 // ========================================
 // 描画関数
@@ -301,10 +309,18 @@ async function renderFolders() {
               <span class="font-semibold text-gray-800">${escapeHtml(folder.name)}</span>
               <span class="text-sm text-ios-gray">${memos.length}</span>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1">
+              <button 
+                class="p-2 text-ios-gray hover:text-ios-blue transition-colors"
+                onclick="event.stopPropagation(); editFolder('${folder.id}', '${escapeHtml(folder.name)}')"
+                title="名前を変更"
+              >
+                ✏️
+              </button>
               <button 
                 class="p-2 text-ios-gray hover:text-red-500 transition-colors"
                 onclick="event.stopPropagation(); deleteFolder('${folder.id}')"
+                title="フォルダを削除"
               >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -625,7 +641,19 @@ function showConfirm(title, message, callback) {
 // フォルダモーダル
 // ========================================
 function showFolderModal() {
+  editingFolderId = null; // 新規作成モード
   elements.folderName.value = '';
+  document.querySelector('#folderModal h2').textContent = '新しいフォルダ'; // タイトル変更
+  elements.confirmFolder.textContent = '作成'; // ボタン変更
+  elements.folderModal.classList.add('open');
+  setTimeout(() => elements.folderName.focus(), 300);
+}
+
+function editFolder(id, currentName) {
+  editingFolderId = id; // 編集モード
+  elements.folderName.value = currentName;
+  document.querySelector('#folderModal h2').textContent = 'フォルダ名を変更'; // タイトル変更
+  elements.confirmFolder.textContent = '保存'; // ボタン変更
   elements.folderModal.classList.add('open');
   setTimeout(() => elements.folderName.focus(), 300);
 }
@@ -1062,8 +1090,13 @@ elements.cancelFolder.addEventListener('click', () => {
 elements.confirmFolder.addEventListener('click', async () => {
   const name = elements.folderName.value.trim();
   if (name) {
-    await Store.addFolder(name);
+    if (editingFolderId) {
+      await Store.updateFolder(editingFolderId, name);
+    } else {
+      await Store.addFolder(name);
+    }
     await renderFolders();
+    await updateFolderSelect(editingFolderId || ''); // 編集時はそのIDを選択状態にする等の配慮
   }
   elements.folderModal.classList.remove('open');
 });
