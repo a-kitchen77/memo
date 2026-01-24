@@ -3,7 +3,8 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
   <title>memo</title>
   <meta name="description" content="シンプルで使いやすいモバイル向けメモアプリ">
 
@@ -52,11 +53,16 @@
       -webkit-tap-highlight-color: transparent;
     }
 
+    html,
     body {
-      font-family: 'Noto Sans JP', sans-serif;
-      background-color: #f2f2f7;
-      min-height: 100vh;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
       overscroll-behavior: none;
+      position: fixed;
+      /* Force fix */
+      background-color: #f2f2f7;
+      font-family: 'Noto Sans JP', sans-serif;
     }
 
     .accordion-content {
@@ -216,9 +222,9 @@
 
 <body class="safe-top safe-bottom">
   <!-- メイン画面 -->
-  <div id="mainScreen" class="min-h-screen">
+  <div id="mainScreen" class="h-[100dvh] w-full flex flex-col overflow-hidden relative">
     <!-- ヘッダー -->
-    <header class="sticky top-0 z-10 bg-ios-bg/95 backdrop-blur-sm px-4 pt-3 pb-2">
+    <header class="shrink-0 z-10 bg-ios-bg/95 backdrop-blur-sm px-4 pt-3 pb-2 border-b border-ios-separator">
       <div class="flex items-center justify-between mb-3">
         <h1 class="text-2xl font-bold text-gray-800">📝 memo</h1>
         <button id="settingsBtn" class="p-2 text-ios-gray hover:text-ios-blue transition-colors">
@@ -259,19 +265,22 @@
       </button>
     </header>
 
-    <!-- 検索結果 -->
-    <div id="searchResults" class="hidden px-4 pb-4">
-      <h2 class="text-sm font-semibold text-ios-gray mb-2">検索結果</h2>
-      <div id="searchResultsList" class="space-y-2"></div>
+    <!-- スクロール可能エリア (Folder List) -->
+    <div class="flex-1 overflow-y-auto pb-4 relative">
+      <!-- 検索結果 -->
+      <div id="searchResults" class="hidden px-4 py-4">
+        <h2 class="text-sm font-semibold text-ios-gray mb-2">検索結果</h2>
+        <div id="searchResultsList" class="space-y-2"></div>
+      </div>
+
+      <!-- フォルダリスト -->
+      <main id="folderList" class="px-4 py-4 pb-24">
+        <!-- フォルダはJSで動的に追加 -->
+      </main>
     </div>
 
-    <!-- フォルダリスト -->
-    <main id="folderList" class="px-4 pb-24">
-      <!-- フォルダはJSで動的に追加 -->
-    </main>
-
-    <!-- フォルダ追加ボタン -->
-    <div class="fixed bottom-6 right-6">
+    <!-- フォルダ追加ボタン (Absolute to mainScreen container) -->
+    <div class="absolute bottom-6 right-6 z-20">
       <button id="addFolderBtn"
         class="w-14 h-14 bg-ios-card rounded-full shadow-ios-lg flex items-center justify-center active:bg-gray-100 transition-colors">
         <svg class="w-6 h-6 text-ios-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
