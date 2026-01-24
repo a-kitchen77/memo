@@ -228,15 +228,46 @@ const elements = {
   confirmTitle: document.getElementById('confirmTitle'),
   confirmMessage: document.getElementById('confirmMessage'),
   confirmCancel: document.getElementById('confirmCancel'),
-  confirmOk: document.getElementById('confirmOk')
+  confirmOk: document.getElementById('confirmOk'),
+
+  // Markdownツールバー
+  insertH2Btn: document.getElementById('insertH2Btn'),
+  insertH3Btn: document.getElementById('insertH3Btn'),
+  insertBoldBtn: document.getElementById('insertBoldBtn'),
+  insertListBtn: document.getElementById('insertListBtn'),
+  insertCheckboxBtn: document.getElementById('insertCheckboxBtn'),
+
+  // フェーズ3追加
+  insertH1Btn: document.getElementById('insertH1Btn'),
+  insertQuoteBtn: document.getElementById('insertQuoteBtn'),
+  insertHrBtn: document.getElementById('insertHrBtn'),
+
+  markdownHelpBtn: document.getElementById('markdownHelpBtn'),
+  markdownHelpModal: document.getElementById('markdownHelpModal'),
+  closeMarkdownHelp: document.getElementById('closeMarkdownHelp'),
+
+  // 編集/プレビュー切り替え
+  editTabBtn: document.getElementById('editTabBtn'),
+  previewTabBtn: document.getElementById('previewTabBtn'),
+  previewArea: document.getElementById('previewArea'),
+
+  // フェーズ2
+  editorHeaderGroup: document.getElementById('editorHeaderGroup'),
+  toggleHeaderBtn: document.getElementById('toggleHeaderBtn'),
+  importFile: document.getElementById('importFile'),
+  saveBtn: document.getElementById('saveBtn'),
+  toastNotification: document.getElementById('toastNotification'),
+  toastMessage: document.getElementById('toastMessage')
 };
 
 // 状態
 let currentMemoId = null;
+let isHeaderCollapsed = false;
 let openFolders = new Set();
 let searchMatchIndex = 0;
 let searchMatches = [];
 let confirmCallback = null;
+let isPreviewMode = false;
 
 // ========================================
 // 描画関数
@@ -538,12 +569,12 @@ function exportMemo() {
   const title = elements.memoTitle.value.trim() || '無題のメモ';
   const content = elements.memoContent.value;
 
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
 
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${title}.txt`;
+  a.download = `${title}.md`;
   a.click();
 
   URL.revokeObjectURL(url);
@@ -729,6 +760,230 @@ function escapeRegex(string) {
 }
 
 // ========================================
+// Markdown入力支援ツールバー
+// ========================================
+
+// 行頭に記号を挿入する共通関数
+function insertAtLineStart(prefix) {
+  const textarea = elements.memoContent;
+  const start = textarea.selectionStart;
+  const content = textarea.value;
+
+  // 現在の行の先頭を探す
+  let lineStart = start;
+  while (lineStart > 0 && content[lineStart - 1] !== '\n') {
+    lineStart--;
+  }
+
+  // 行頭に記号を挿入
+  textarea.value = content.substring(0, lineStart) + prefix + content.substring(lineStart);
+
+  // カーソル位置を調整
+  const newPos = start + prefix.length;
+  textarea.setSelectionRange(newPos, newPos);
+  textarea.focus();
+  updateCharCount();
+}
+
+// 選択テキストを囲む共通関数
+function wrapSelection(before, after) {
+  const textarea = elements.memoContent;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const content = textarea.value;
+  const selectedText = content.substring(start, end);
+
+  if (selectedText) {
+    // 選択範囲がある場合、囲む
+    textarea.value = content.substring(0, start) + before + selectedText + after + content.substring(end);
+    textarea.setSelectionRange(start + before.length, end + before.length);
+  } else {
+    // 選択範囲がない場合、記号を挿入してカーソルを真ん中に
+    textarea.value = content.substring(0, start) + before + after + content.substring(end);
+    textarea.setSelectionRange(start + before.length, start + before.length);
+  }
+
+  textarea.focus();
+  updateCharCount();
+}
+
+// 見出し2を挿入
+function insertHeading2() {
+  insertAtLineStart('## ');
+}
+
+// 見出し3を挿入
+function insertHeading3() {
+  insertAtLineStart('### ');
+}
+
+// 見出し1を挿入（フェーズ3）
+function insertHeading1() {
+  insertAtLineStart('# ');
+}
+
+// 太字を挿入
+function insertBold() {
+  wrapSelection('**', '**');
+}
+
+// リストを挿入
+function insertList() {
+  insertAtLineStart('- ');
+}
+
+// チェックボックスを挿入
+function insertCheckbox() {
+  insertAtLineStart('- [ ] ');
+}
+
+// 引用を挿入（フェーズ3）
+function insertQuote() {
+  insertAtLineStart('> ');
+}
+
+// 区切り線を挿入（フェーズ3）
+function insertHr() {
+  // 現在のカーソル位置の前後に改行を入れて水平線を挿入
+  const textarea = elements.memoContent;
+  const start = textarea.selectionStart;
+  const content = textarea.value;
+
+  // インサートするテキスト（前後に改行）
+  const hrText = '\n\n---\n\n';
+
+  textarea.value = content.substring(0, start) + hrText + content.substring(start);
+
+  // カーソル位置を調整（挿入した水平線の後へ）
+  const newPos = start + hrText.length;
+  textarea.setSelectionRange(newPos, newPos);
+  textarea.focus();
+  updateCharCount();
+}
+
+// ========================================
+// プレビュー機能
+// ========================================
+function switchToEditMode() {
+  isPreviewMode = false;
+  elements.memoContent.classList.remove('hidden');
+  elements.previewArea.classList.add('hidden');
+  elements.editTabBtn.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+  elements.editTabBtn.classList.remove('text-gray-500');
+  elements.previewTabBtn.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+  elements.previewTabBtn.classList.add('text-gray-500');
+}
+
+function switchToPreviewMode() {
+  isPreviewMode = true;
+  // Markdownをレンダリング（breaks: true で改行を有効化）
+  const content = elements.memoContent.value;
+  elements.previewArea.innerHTML = marked.parse(content, { breaks: true });
+
+  elements.memoContent.classList.add('hidden');
+  elements.previewArea.classList.remove('hidden');
+  elements.previewTabBtn.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+  elements.previewTabBtn.classList.remove('text-gray-500');
+  elements.editTabBtn.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+  elements.editTabBtn.classList.add('text-gray-500');
+}
+
+// ========================================
+// ヘッダー折りたたみ（集中モード）
+// ========================================
+function toggleHeader() {
+  isHeaderCollapsed = !isHeaderCollapsed;
+  const arrow = elements.toggleHeaderBtn.querySelector('svg');
+
+  if (isHeaderCollapsed) {
+    elements.editorHeaderGroup.classList.add('collapsed');
+    arrow.style.transform = 'rotate(180deg)';
+  } else {
+    elements.editorHeaderGroup.classList.remove('collapsed');
+    arrow.style.transform = 'rotate(0deg)';
+  }
+}
+
+// ========================================
+// ファイルインポート
+// ========================================
+async function importFile(file) {
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const content = e.target.result;
+    const fileName = file.name.replace(/\.(txt|md)$/i, '');
+
+    // 現在のエディタに反映
+    elements.memoTitle.value = fileName;
+    elements.memoContent.value = content;
+    updateCharCount();
+
+    // 即時プレビュー更新（プレビューモードの場合）
+    if (isPreviewMode) {
+      elements.previewArea.innerHTML = marked.parse(content, { breaks: true });
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ========================================
+// 上書き保存 & トースト通知
+// ========================================
+async function saveCurrentMemo() {
+  const folderId = elements.folderSelect.value;
+  const title = elements.memoTitle.value.trim();
+  const content = elements.memoContent.value;
+
+  // バリデーション：空のメモは保存しない（または警告）
+  if (!title && !content.trim()) {
+    showToast('⚠️ タイトルまたは本文を入力してください');
+    return;
+  }
+
+  // フォルダ未選択の場合は「未分類」へ
+  let targetFolderId = folderId;
+  if (!targetFolderId) {
+    const uncategorized = await getOrCreateUncategorizedFolder();
+    targetFolderId = uncategorized.id;
+    // セレクトボックスも更新
+    elements.folderSelect.value = targetFolderId;
+  }
+
+  if (currentMemoId) {
+    await Store.updateMemo(currentMemoId, { folderId: targetFolderId, title, content });
+  } else {
+    const newMemo = await Store.addMemo({ folderId: targetFolderId, title, content });
+    currentMemoId = newMemo.id; // 新規作成後はIDを保持
+  }
+
+  await renderFolders();
+  await renderSearchResults();
+  showToast('保存しました！');
+}
+
+function showToast(message) {
+  elements.toastMessage.textContent = message;
+  elements.toastNotification.classList.add('show');
+
+  setTimeout(() => {
+    elements.toastNotification.classList.remove('show');
+  }, 2000);
+}
+
+// ========================================
+// Markdownヘルプモーダル
+// ========================================
+function showMarkdownHelp() {
+  elements.markdownHelpModal.classList.add('open');
+}
+
+function closeMarkdownHelp() {
+  elements.markdownHelpModal.classList.remove('open');
+}
+
+// ========================================
 // イベントリスナー
 // ========================================
 elements.newMemoBtn.addEventListener('click', openEditor);
@@ -828,6 +1083,35 @@ elements.confirmOk.addEventListener('click', () => {
   elements.confirmModal.classList.remove('open');
   confirmCallback = null;
 });
+
+// Markdownツールバー
+elements.insertListBtn.addEventListener('click', insertList);
+elements.insertH2Btn.addEventListener('click', insertHeading2);
+elements.insertH3Btn.addEventListener('click', insertHeading3);
+// フェーズ3追加
+elements.insertH1Btn.addEventListener('click', insertHeading1);
+elements.insertBoldBtn.addEventListener('click', insertBold);
+elements.insertQuoteBtn.addEventListener('click', insertQuote);
+elements.insertCheckboxBtn.addEventListener('click', insertCheckbox);
+elements.insertHrBtn.addEventListener('click', insertHr);
+
+// 編集/プレビュー切り替え
+elements.editTabBtn.addEventListener('click', switchToEditMode);
+elements.previewTabBtn.addEventListener('click', switchToPreviewMode);
+
+// Markdownヘルプモーダル
+elements.markdownHelpBtn.addEventListener('click', showMarkdownHelp);
+elements.closeMarkdownHelp.addEventListener('click', closeMarkdownHelp);
+
+// フェーズ2追加
+elements.toggleHeaderBtn.addEventListener('click', toggleHeader);
+elements.importFile.addEventListener('change', (e) => {
+  if (e.target.files[0]) {
+    importFile(e.target.files[0]);
+    e.target.value = ''; // Reset input to allow re-importing same file
+  }
+});
+elements.saveBtn.addEventListener('click', saveCurrentMemo);
 
 // ========================================
 // 初期化
