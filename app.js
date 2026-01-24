@@ -1132,3 +1132,26 @@ async function init() {
 }
 
 init();
+
+// ========================================
+// Visual Viewport Fix for Mobile Keyboard
+// ========================================
+if (window.visualViewport) {
+  function resizeHandler() {
+    const appContainer = document.getElementById('app');
+    if (appContainer) {
+      // Force app height to match the visual viewport (visible area above keyboard)
+      appContainer.style.height = window.visualViewport.height + 'px';
+      // Ensure no overflow on the container itself (content scrolls internally)
+      appContainer.style.overflow = 'hidden';
+      // Prevent slight scroll offsets
+      window.scrollTo(0, 0);
+    }
+  }
+
+  window.visualViewport.addEventListener('resize', resizeHandler);
+  window.visualViewport.addEventListener('scroll', resizeHandler);
+
+  // Initial call
+  resizeHandler();
+}
