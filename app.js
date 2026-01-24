@@ -255,7 +255,7 @@ const elements = {
   previewArea: document.getElementById('previewArea'),
 
   // フェーズ2
-  editorFixedGroup: document.getElementById('editorFixedGroup'),
+  // editorFixedGroup: document.getElementById('editorFixedGroup'), // Removed in Flexbox refactor
   headerArea: document.getElementById('headerArea'),
   toggleHeaderBtn: document.getElementById('toggleHeaderBtn'),
   importFile: document.getElementById('importFile'),
