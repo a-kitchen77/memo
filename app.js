@@ -235,12 +235,15 @@ const elements = {
   insertH3Btn: document.getElementById('insertH3Btn'),
   insertBoldBtn: document.getElementById('insertBoldBtn'),
   insertListBtn: document.getElementById('insertListBtn'),
-  insertCheckboxBtn: document.getElementById('insertCheckboxBtn'),
+  // insertCheckboxBtn: document.getElementById('insertCheckboxBtn'), // Removed
 
   // フェーズ3追加
   insertH1Btn: document.getElementById('insertH1Btn'),
   insertQuoteBtn: document.getElementById('insertQuoteBtn'),
   insertHrBtn: document.getElementById('insertHrBtn'),
+
+  // New Buttons
+  undoBtn: document.getElementById('undoBtn'),
 
   markdownHelpBtn: document.getElementById('markdownHelpBtn'),
   markdownHelpModal: document.getElementById('markdownHelpModal'),
@@ -252,7 +255,8 @@ const elements = {
   previewArea: document.getElementById('previewArea'),
 
   // フェーズ2
-  editorHeaderGroup: document.getElementById('editorHeaderGroup'),
+  editorFixedGroup: document.getElementById('editorFixedGroup'),
+  headerArea: document.getElementById('headerArea'),
   toggleHeaderBtn: document.getElementById('toggleHeaderBtn'),
   importFile: document.getElementById('importFile'),
   saveBtn: document.getElementById('saveBtn'),
@@ -896,10 +900,10 @@ function toggleHeader() {
   const arrow = elements.toggleHeaderBtn.querySelector('svg');
 
   if (isHeaderCollapsed) {
-    elements.editorHeaderGroup.classList.add('collapsed');
+    elements.headerArea.classList.add('collapsed');
     arrow.style.transform = 'rotate(180deg)';
   } else {
-    elements.editorHeaderGroup.classList.remove('collapsed');
+    elements.headerArea.classList.remove('collapsed');
     arrow.style.transform = 'rotate(0deg)';
   }
 }
@@ -1092,8 +1096,13 @@ elements.insertH3Btn.addEventListener('click', insertHeading3);
 elements.insertH1Btn.addEventListener('click', insertHeading1);
 elements.insertBoldBtn.addEventListener('click', insertBold);
 elements.insertQuoteBtn.addEventListener('click', insertQuote);
-elements.insertCheckboxBtn.addEventListener('click', insertCheckbox);
+// elements.insertCheckboxBtn.addEventListener('click', insertCheckbox); // Removed
 elements.insertHrBtn.addEventListener('click', insertHr);
+
+// Undo
+elements.undoBtn.addEventListener('click', () => {
+  document.execCommand('undo');
+});
 
 // 編集/プレビュー切り替え
 elements.editTabBtn.addEventListener('click', switchToEditMode);

@@ -135,21 +135,42 @@
       width: 0px;
     }
 
-    /* ヘッダー折りたたみ */
-    #editorHeaderGroup {
-      transition: transform 0.3s ease, opacity 0.3s ease, max-height 0.3s ease;
-      overflow: hidden;
+    /* ヘッダー折りたたみ (Double Fixed Layout) */
+    #editorFixedGroup {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      /* Ensure it stays above scrolling content */
+      width: 100%;
+    }
+
+    #headerArea {
+      transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
       max-height: 500px;
+      /* Arbitrary large height */
       opacity: 1;
     }
 
-    #editorHeaderGroup.collapsed {
-      transform: translateY(-20px);
-      opacity: 0;
+    #headerArea.collapsed {
       max-height: 0;
-      padding-top: 0;
-      padding-bottom: 0;
+      opacity: 0;
+      overflow: hidden;
       pointer-events: none;
+    }
+
+    #toolbarArea {
+      width: 100%;
+      /* Position is handled by flex flow in editorFixedGroup which is sticky */
+    }
+
+    /* Hide scrollbar for toolbar but allow functionality */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
     }
 
     /* トースト通知 */
@@ -299,158 +320,177 @@
         </div>
       </header>
 
-      <!-- 折りたたみ対象エリア -->
-      <div id="editorHeaderGroup">
-        <!-- フォルダ選択 -->
-        <div class="px-4 py-3 bg-ios-card border-b border-ios-separator">
-          <label class="text-sm text-ios-gray">保存先フォルダ</label>
-          <div class="flex gap-2 mt-1">
-            <select id="folderSelect" class="flex-1 bg-ios-bg rounded-lg px-3 py-2.5 text-sm font-medium">
-              <option value="">フォルダを選択...</option>
-            </select>
-            <button id="addFolderInlineBtn"
-              class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium active:bg-blue-600">
-              ＋
-            </button>
+      <!-- 固定ヘッダーグループ (Header + Toolbar) -->
+      <div id="editorFixedGroup" class="flex flex-col bg-ios-bg z-20 relative">
+
+        <!-- A. ヘッダーエリア (折りたたみ対象) -->
+        <div id="headerArea" class="transition-all duration-300 ease-in-out overflow-hidden">
+          <!-- フォルダ選択 -->
+          <div class="px-4 py-3 bg-ios-card border-b border-ios-separator">
+            <label class="text-sm text-ios-gray">保存先フォルダ</label>
+            <div class="flex gap-2 mt-1">
+              <select id="folderSelect" class="flex-1 bg-ios-bg rounded-lg px-3 py-2.5 text-sm font-medium">
+                <option value="">フォルダを選択...</option>
+              </select>
+              <button id="addFolderInlineBtn"
+                class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium active:bg-blue-600">
+                ＋
+              </button>
+            </div>
+            <!-- インライン新規フォルダ作成 -->
+            <div id="inlineFolderCreate" class="hidden mt-2">
+              <div class="flex gap-2">
+                <input type="text" id="inlineFolderName" placeholder="新しいフォルダ名"
+                  class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
+                <button id="confirmInlineFolder"
+                  class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium">
+                  作成
+                </button>
+                <button id="cancelInlineFolder" class="text-ios-gray px-2 py-2 text-sm">
+                  ✕
+                </button>
+              </div>
+            </div>
           </div>
-          <!-- インライン新規フォルダ作成 -->
-          <div id="inlineFolderCreate" class="hidden mt-2">
-            <div class="flex gap-2">
-              <input type="text" id="inlineFolderName" placeholder="新しいフォルダ名"
-                class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
-              <button id="confirmInlineFolder" class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium">
-                作成
+
+          <!-- タイトル入力 -->
+          <div class="px-4 py-3 bg-ios-card border-b border-ios-separator">
+            <input type="text" id="memoTitle" placeholder="タイトル（空欄可）"
+              class="w-full text-lg font-semibold bg-transparent placeholder-ios-gray">
+          </div>
+
+          <!-- 編集/プレビュー切り替え -->
+          <div class="px-4 py-2 bg-ios-card border-b border-ios-separator flex items-center gap-4">
+            <div class="flex bg-ios-bg rounded-lg p-0.5">
+              <button id="editTabBtn"
+                class="px-4 py-1.5 rounded-md text-sm font-medium bg-white text-gray-800 shadow-sm transition-all">
+                ✏️ 編集
               </button>
-              <button id="cancelInlineFolder" class="text-ios-gray px-2 py-2 text-sm">
-                ✕
+              <button id="previewTabBtn"
+                class="px-4 py-1.5 rounded-md text-sm font-medium text-gray-500 transition-all">
+                👁️ プレビュー
               </button>
+            </div>
+            <!-- インポートボタン -->
+            <label for="importFile"
+              class="text-ios-blue text-sm font-medium py-1 px-2 cursor-pointer active:opacity-60 flex items-center gap-1"
+              title="ファイルを読み込む">
+              📂 開く
+              <input type="file" id="importFile" accept=".txt,.md" class="hidden">
+            </label>
+            <div class="flex-1"></div>
+            <button id="toggleSearchReplace" class="flex items-center gap-1 text-ios-blue text-sm font-medium py-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              検索
+            </button>
+            <div id="charCount" class="text-sm text-ios-gray">0 文字</div>
+          </div>
+
+          <!-- 検索・置換パネル -->
+          <div id="searchReplacePanel" class="search-replace-panel bg-ios-card border-b border-ios-separator">
+            <div class="px-4 py-3 space-y-2">
+              <div class="flex gap-2">
+                <input type="text" id="searchText" placeholder="検索..."
+                  class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
+                <button id="findNextBtn" class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium">
+                  次へ
+                </button>
+              </div>
+              <div class="flex gap-2">
+                <input type="text" id="replaceText" placeholder="置換..."
+                  class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
+                <button id="replaceBtn" class="bg-ios-gray text-white px-3 py-2 rounded-lg text-sm font-medium">
+                  置換
+                </button>
+                <button id="replaceAllBtn" class="bg-ios-gray text-white px-3 py-2 rounded-lg text-sm font-medium">
+                  全て
+                </button>
+              </div>
+              <div id="searchInfo" class="text-xs text-ios-gray"></div>
             </div>
           </div>
         </div>
 
-        <!-- タイトル入力 -->
-        <div class="px-4 py-3 bg-ios-card border-b border-ios-separator">
-          <input type="text" id="memoTitle" placeholder="タイトル（空欄可）"
-            class="w-full text-lg font-semibold bg-transparent placeholder-ios-gray">
-        </div>
+        <!-- 折りたたみトグルボタン -->
+        <button id="toggleHeaderBtn"
+          class="w-full bg-ios-card hover:bg-gray-50 text-ios-gray py-1 flex justify-center border-b border-ios-separator transition-colors">
+          <svg class="w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
 
-        <!-- Markdown入力支援ツールバー -->
-        <div class="px-4 py-2 bg-ios-card border-b border-ios-separator">
-          <div class="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1"
-            style="-webkit-overflow-scrolling: touch;">
-            <!-- リスト -->
+        <!-- B. ツールバーエリア (常時固定・1行・Undo追加) -->
+        <div id="toolbarArea" class="px-2 py-2 bg-ios-card border-b border-ios-separator shadow-sm z-30">
+          <div class="flex items-center gap-2 overflow-x-auto no-scrollbar" style="-webkit-overflow-scrolling: touch;">
+
+            <!-- Undo (New) -->
+            <button id="undoBtn"
+              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 shrink-0"
+              title="元に戻す">
+              ↶
+            </button>
+
+            <div class="w-px h-6 bg-ios-separator shrink-0 mx-1"></div>
+
+            <!-- リスト (Updated Label) -->
             <button id="insertListBtn"
-              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 whitespace-nowrap"
+              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 shrink-0"
               title="リスト">
-              • リスト
+              ・
             </button>
 
             <!-- H2 -->
             <button id="insertH2Btn"
-              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200"
+              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 shrink-0"
               title="見出し (H2)">
               H2
             </button>
 
             <!-- H3 -->
             <button id="insertH3Btn"
-              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200"
+              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 shrink-0"
               title="小見出し (H3)">
               H3
             </button>
 
-            <!-- H1 (New) -->
+            <!-- H1 -->
             <button id="insertH1Btn"
-              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200"
+              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 shrink-0"
               title="大見出し (H1)">
               H1
             </button>
 
             <!-- 太字 -->
             <button id="insertBoldBtn"
-              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-bold text-gray-700 active:bg-gray-200" title="太字">
+              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-bold text-gray-700 active:bg-gray-200 shrink-0"
+              title="太字">
               B
             </button>
 
-            <!-- 引用 (New) -->
+            <!-- 引用 (Updated Label) -->
             <button id="insertQuoteBtn"
-              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200" title="引用">
-              ” 引用
+              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 shrink-0"
+              title="引用">
+              &gt;
             </button>
 
-            <!-- チェックボックス -->
-            <button id="insertCheckboxBtn"
-              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 whitespace-nowrap"
-              title="チェックボックス">
-              ☐ チェック
-            </button>
-
-            <!-- 区切り線 (New) -->
+            <!-- 区切り線 -->
             <button id="insertHrBtn"
-              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 text-xs flex items-center"
+              class="px-3 py-1.5 bg-ios-bg rounded-lg text-sm font-medium text-gray-700 active:bg-gray-200 text-xs flex items-center shrink-0"
               title="区切り線">
               ーー
             </button>
 
             <div class="flex-1"></div>
+
             <button id="markdownHelpBtn"
-              class="px-3 py-1.5 bg-ios-blue text-white rounded-lg text-sm font-medium active:bg-blue-600 shrink-0"
+              class="px-3 py-1.5 bg-ios-blue text-white rounded-lg text-sm font-medium active:bg-blue-600 shrink-0 ml-2"
               title="Markdownヘルプ">
               ？
             </button>
-          </div>
-        </div>
-
-        <!-- 編集/プレビュー切り替えタブ -->
-        <div class="px-4 py-2 bg-ios-card border-b border-ios-separator flex items-center gap-4">
-          <div class="flex bg-ios-bg rounded-lg p-0.5">
-            <button id="editTabBtn"
-              class="px-4 py-1.5 rounded-md text-sm font-medium bg-white text-gray-800 shadow-sm transition-all">
-              ✏️ 編集
-            </button>
-            <button id="previewTabBtn" class="px-4 py-1.5 rounded-md text-sm font-medium text-gray-500 transition-all">
-              👁️ プレビュー
-            </button>
-          </div>
-          <!-- インポートボタン -->
-          <label for="importFile"
-            class="text-ios-blue text-sm font-medium py-1 px-2 cursor-pointer active:opacity-60 flex items-center gap-1"
-            title="ファイルを読み込む">
-            📂 開く
-            <input type="file" id="importFile" accept=".txt,.md" class="hidden">
-          </label>
-          <div class="flex-1"></div>
-          <button id="toggleSearchReplace" class="flex items-center gap-1 text-ios-blue text-sm font-medium py-1">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            検索
-          </button>
-          <div id="charCount" class="text-sm text-ios-gray">0 文字</div>
-        </div>
-
-        <!-- 検索・置換パネル -->
-        <div id="searchReplacePanel" class="search-replace-panel bg-ios-card border-b border-ios-separator">
-          <div class="px-4 py-3 space-y-2">
-            <div class="flex gap-2">
-              <input type="text" id="searchText" placeholder="検索..."
-                class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
-              <button id="findNextBtn" class="bg-ios-blue text-white px-3 py-2 rounded-lg text-sm font-medium">
-                次へ
-              </button>
-            </div>
-            <div class="flex gap-2">
-              <input type="text" id="replaceText" placeholder="置換..."
-                class="flex-1 bg-ios-bg rounded-lg px-3 py-2 text-sm">
-              <button id="replaceBtn" class="bg-ios-gray text-white px-3 py-2 rounded-lg text-sm font-medium">
-                置換
-              </button>
-              <button id="replaceAllBtn" class="bg-ios-gray text-white px-3 py-2 rounded-lg text-sm font-medium">
-                全て
-              </button>
-            </div>
-            <div id="searchInfo" class="text-xs text-ios-gray"></div>
           </div>
         </div>
       </div>
