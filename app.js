@@ -1190,94 +1190,8 @@ if (window.visualViewport) {
 }
 
 // ========================================
-// カーソル位置を見える位置にスクロール（iOS対応）
+// キーボード表示時のスクロール調整（シンプル版）
 // ========================================
-function scrollToCursor() {
-  const textarea = elements.memoContent;
-  if (!textarea) return;
-
-  // textareaが非表示（プレビューモード）の場合はスキップ
-  if (textarea.classList.contains('hidden')) return;
-
-  // カーソル位置を取得
-  const cursorPos = textarea.selectionStart;
-  const textBeforeCursor = textarea.value.substring(0, cursorPos);
-
-  // ミラー要素を作成してカーソルまでのテキストの高さを計算
-  const mirror = document.createElement('div');
-  const style = window.getComputedStyle(textarea);
-
-  // textareaと同じスタイルを適用
-  mirror.style.cssText = `
-    position: absolute;
-    visibility: hidden;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    width: ${textarea.clientWidth}px;
-    font-size: ${style.fontSize};
-    font-family: ${style.fontFamily};
-    line-height: ${style.lineHeight};
-    padding: ${style.padding};
-    border: ${style.border};
-    box-sizing: border-box;
-  `;
-
-  // カーソル前のテキスト + 追加のスペース（高さ計算用）
-  mirror.textContent = textBeforeCursor || 'X';
-
-  document.body.appendChild(mirror);
-  const cursorY = mirror.offsetHeight;
-  document.body.removeChild(mirror);
-
-  // textareaの可視領域
-  const visibleHeight = textarea.clientHeight;
-  const scrollPadding = 80; // キーボードの上に確保する余白
-
-  // 現在のスクロール位置
-  const currentScrollTop = textarea.scrollTop;
-
-  // カーソルが下に隠れている場合
-  if (cursorY > currentScrollTop + visibleHeight - scrollPadding) {
-    textarea.scrollTop = cursorY - visibleHeight + scrollPadding;
-  }
-  // カーソルが上に隠れている場合
-  else if (cursorY < currentScrollTop + 20) {
-    textarea.scrollTop = Math.max(0, cursorY - 40);
-  }
-}
-
-// フォーカス時（タップ時）にカーソル位置へスクロール
-elements.memoContent.addEventListener('focus', () => {
-  // キーボードが表示されるのを待ってからスクロール（複数回試行）
-  setTimeout(scrollToCursor, 300);
-  setTimeout(scrollToCursor, 500);
-  setTimeout(scrollToCursor, 800);
-});
-
-// タッチ終了時もスクロール調整（タップ検出）
-elements.memoContent.addEventListener('touchend', () => {
-  setTimeout(scrollToCursor, 100);
-  setTimeout(scrollToCursor, 400);
-});
-
-// クリック/タップ時もスクロール調整
-elements.memoContent.addEventListener('click', () => {
-  setTimeout(scrollToCursor, 100);
-  setTimeout(scrollToCursor, 300);
-});
-
-// 入力時もカーソル位置を追随
-elements.memoContent.addEventListener('input', scrollToCursor);
-
-// 選択範囲変更時もスクロール
-elements.memoContent.addEventListener('selectionchange', () => {
-  if (document.activeElement === elements.memoContent) {
-    scrollToCursor();
-  }
-});
-
-// キーボード表示でビューポートがリサイズされた時にもスクロール調整
 if (window.visualViewport) {
   let lastHeight = window.visualViewport.height;
 
@@ -1286,9 +1200,13 @@ if (window.visualViewport) {
 
     // キーボードが表示された（高さが小さくなった）場合
     if (currentHeight < lastHeight) {
-      setTimeout(scrollToCursor, 100);
-      setTimeout(scrollToCursor, 300);
-      setTimeout(scrollToCursor, 500);
+      setTimeout(() => {
+        // TEXTAREAにフォーカスがある場合のみ
+        if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') {
+          // textarea自体を画面の中央に持ってくる
+          document.activeElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+      }, 100);
     }
 
     lastHeight = currentHeight;
