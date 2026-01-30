@@ -1188,3 +1188,67 @@ if (window.visualViewport) {
   // Initial call
   resizeHandler();
 }
+
+// ========================================
+// カーソル位置を見える位置にスクロール（iOS対応）
+// ========================================
+function scrollToCursor() {
+  const textarea = elements.memoContent;
+  if (!textarea || document.activeElement !== textarea) return;
+
+  // textareaが非表示（プレビューモード）の場合はスキップ
+  if (textarea.classList.contains('hidden')) return;
+
+  // 少し遅延させてキーボード表示完了を待つ
+  requestAnimationFrame(() => {
+    const cursorPos = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.substring(0, cursorPos);
+    const lines = textBeforeCursor.split('\n');
+    const currentLineNumber = lines.length;
+
+    // 1行あたりの高さを推定（line-height: 1.625 * font-size: 16px ≈ 26px）
+    const lineHeight = 26;
+    const cursorY = (currentLineNumber - 1) * lineHeight;
+
+    // textareaの表示領域
+    const textareaRect = textarea.getBoundingClientRect();
+    const visibleHeight = textareaRect.height;
+
+    // カーソルがtextarea内で見える位置にあるかチェック
+    const scrollTop = textarea.scrollTop;
+    const cursorRelativeY = cursorY - scrollTop;
+
+    // カーソルが下に隠れている場合（マージン40pxを確保）
+    if (cursorRelativeY > visibleHeight - 60) {
+      textarea.scrollTop = cursorY - visibleHeight + 80;
+    }
+    // カーソルが上に隠れている場合
+    else if (cursorRelativeY < 0) {
+      textarea.scrollTop = cursorY - 20;
+    }
+  });
+}
+
+// フォーカス時（タップ時）にカーソル位置へスクロール
+elements.memoContent.addEventListener('focus', () => {
+  // キーボードが表示されるのを待ってからスクロール
+  setTimeout(scrollToCursor, 300);
+});
+
+// クリック/タップ時もスクロール調整
+elements.memoContent.addEventListener('click', () => {
+  setTimeout(scrollToCursor, 100);
+});
+
+// 入力時もカーソル位置を追随
+elements.memoContent.addEventListener('input', () => {
+  // 入力ごとにカーソル追随（ただしパフォーマンスのため簡易版）
+  scrollToCursor();
+});
+
+// キーボード表示でビューポートがリサイズされた時にもスクロール調整
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    setTimeout(scrollToCursor, 100);
+  });
+}
