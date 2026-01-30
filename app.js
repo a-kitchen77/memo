@@ -1194,61 +1194,103 @@ if (window.visualViewport) {
 // ========================================
 function scrollToCursor() {
   const textarea = elements.memoContent;
-  if (!textarea || document.activeElement !== textarea) return;
+  if (!textarea) return;
 
   // textareaが非表示（プレビューモード）の場合はスキップ
   if (textarea.classList.contains('hidden')) return;
 
-  // 少し遅延させてキーボード表示完了を待つ
-  requestAnimationFrame(() => {
-    const cursorPos = textarea.selectionStart;
-    const textBeforeCursor = textarea.value.substring(0, cursorPos);
-    const lines = textBeforeCursor.split('\n');
-    const currentLineNumber = lines.length;
+  // カーソル位置を取得
+  const cursorPos = textarea.selectionStart;
+  const textBeforeCursor = textarea.value.substring(0, cursorPos);
 
-    // 1行あたりの高さを推定（line-height: 1.625 * font-size: 16px ≈ 26px）
-    const lineHeight = 26;
-    const cursorY = (currentLineNumber - 1) * lineHeight;
+  // ミラー要素を作成してカーソルまでのテキストの高さを計算
+  const mirror = document.createElement('div');
+  const style = window.getComputedStyle(textarea);
 
-    // textareaの表示領域
-    const textareaRect = textarea.getBoundingClientRect();
-    const visibleHeight = textareaRect.height;
+  // textareaと同じスタイルを適用
+  mirror.style.cssText = `
+    position: absolute;
+    visibility: hidden;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    width: ${textarea.clientWidth}px;
+    font-size: ${style.fontSize};
+    font-family: ${style.fontFamily};
+    line-height: ${style.lineHeight};
+    padding: ${style.padding};
+    border: ${style.border};
+    box-sizing: border-box;
+  `;
 
-    // カーソルがtextarea内で見える位置にあるかチェック
-    const scrollTop = textarea.scrollTop;
-    const cursorRelativeY = cursorY - scrollTop;
+  // カーソル前のテキスト + 追加のスペース（高さ計算用）
+  mirror.textContent = textBeforeCursor || 'X';
 
-    // カーソルが下に隠れている場合（マージン40pxを確保）
-    if (cursorRelativeY > visibleHeight - 60) {
-      textarea.scrollTop = cursorY - visibleHeight + 80;
-    }
-    // カーソルが上に隠れている場合
-    else if (cursorRelativeY < 0) {
-      textarea.scrollTop = cursorY - 20;
-    }
-  });
+  document.body.appendChild(mirror);
+  const cursorY = mirror.offsetHeight;
+  document.body.removeChild(mirror);
+
+  // textareaの可視領域
+  const visibleHeight = textarea.clientHeight;
+  const scrollPadding = 80; // キーボードの上に確保する余白
+
+  // 現在のスクロール位置
+  const currentScrollTop = textarea.scrollTop;
+
+  // カーソルが下に隠れている場合
+  if (cursorY > currentScrollTop + visibleHeight - scrollPadding) {
+    textarea.scrollTop = cursorY - visibleHeight + scrollPadding;
+  }
+  // カーソルが上に隠れている場合
+  else if (cursorY < currentScrollTop + 20) {
+    textarea.scrollTop = Math.max(0, cursorY - 40);
+  }
 }
 
 // フォーカス時（タップ時）にカーソル位置へスクロール
 elements.memoContent.addEventListener('focus', () => {
-  // キーボードが表示されるのを待ってからスクロール
+  // キーボードが表示されるのを待ってからスクロール（複数回試行）
   setTimeout(scrollToCursor, 300);
+  setTimeout(scrollToCursor, 500);
+  setTimeout(scrollToCursor, 800);
+});
+
+// タッチ終了時もスクロール調整（タップ検出）
+elements.memoContent.addEventListener('touchend', () => {
+  setTimeout(scrollToCursor, 100);
+  setTimeout(scrollToCursor, 400);
 });
 
 // クリック/タップ時もスクロール調整
 elements.memoContent.addEventListener('click', () => {
   setTimeout(scrollToCursor, 100);
+  setTimeout(scrollToCursor, 300);
 });
 
 // 入力時もカーソル位置を追随
-elements.memoContent.addEventListener('input', () => {
-  // 入力ごとにカーソル追随（ただしパフォーマンスのため簡易版）
-  scrollToCursor();
+elements.memoContent.addEventListener('input', scrollToCursor);
+
+// 選択範囲変更時もスクロール
+elements.memoContent.addEventListener('selectionchange', () => {
+  if (document.activeElement === elements.memoContent) {
+    scrollToCursor();
+  }
 });
 
 // キーボード表示でビューポートがリサイズされた時にもスクロール調整
 if (window.visualViewport) {
+  let lastHeight = window.visualViewport.height;
+
   window.visualViewport.addEventListener('resize', () => {
-    setTimeout(scrollToCursor, 100);
+    const currentHeight = window.visualViewport.height;
+
+    // キーボードが表示された（高さが小さくなった）場合
+    if (currentHeight < lastHeight) {
+      setTimeout(scrollToCursor, 100);
+      setTimeout(scrollToCursor, 300);
+      setTimeout(scrollToCursor, 500);
+    }
+
+    lastHeight = currentHeight;
   });
 }
