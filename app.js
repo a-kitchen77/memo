@@ -223,6 +223,7 @@ const elements = {
   replaceBtn: document.getElementById('replaceBtn'),
   replaceAllBtn: document.getElementById('replaceAllBtn'),
   searchInfo: document.getElementById('searchInfo'),
+  searchHighlightOverlay: document.getElementById('searchHighlightOverlay'),
 
   // フォルダモーダル
   folderModal: document.getElementById('folderModal'),
@@ -504,6 +505,15 @@ function toggleSearchReplace() {
   elements.searchReplacePanel.classList.toggle('open');
   if (elements.searchReplacePanel.classList.contains('open')) {
     elements.searchText.focus();
+  } else {
+    // 検索パネルを閉じた時にハイライトをクリア
+    elements.searchHighlightOverlay.classList.add('hidden');
+    elements.memoContent.classList.remove('search-active');
+    searchMatches = [];
+    searchMatchIndex = 0;
+    elements.searchInfo.textContent = '';
+    elements.searchText.value = '';
+    elements.replaceText.value = '';
   }
 }
 
@@ -516,6 +526,7 @@ function findMatchesQuiet() {
     searchMatches = [];
     searchMatchIndex = 0;
     elements.searchInfo.textContent = '';
+    updateSearchHighlight();
     return;
   }
 
@@ -535,6 +546,7 @@ function findMatchesQuiet() {
   } else {
     elements.searchInfo.textContent = '見つかりませんでした';
   }
+  updateSearchHighlight();
 }
 
 // マッチを検索してハイライト（フォーカス移動あり）— ボタンクリック用
@@ -560,9 +572,52 @@ function highlightMatch() {
   if (searchMatches.length === 0) return;
 
   const pos = searchMatches[searchMatchIndex];
-  const len = elements.searchText.value.length;
-  elements.memoContent.focus();
-  elements.memoContent.setSelectionRange(pos, pos + len);
+  const textarea = elements.memoContent;
+
+  // スクロール位置を計算（フォーカスなし）
+  const textBefore = textarea.value.substring(0, pos);
+  const linesBefore = textBefore.split('\n').length - 1;
+  const style = getComputedStyle(textarea);
+  const lineHeight = parseFloat(style.lineHeight) || 26;
+  const targetScroll = Math.max(0, linesBefore * lineHeight - textarea.clientHeight / 3);
+  textarea.scrollTop = targetScroll;
+
+  // ハイライトオーバーレイを更新
+  updateSearchHighlight();
+}
+
+// 検索ハイライトオーバーレイを更新
+function updateSearchHighlight() {
+  const overlay = elements.searchHighlightOverlay;
+  const content = elements.memoContent.value;
+  const query = elements.searchText.value;
+
+  if (!query || searchMatches.length === 0) {
+    overlay.classList.add('hidden');
+    elements.memoContent.classList.remove('search-active');
+    return;
+  }
+
+  overlay.classList.remove('hidden');
+  elements.memoContent.classList.add('search-active');
+
+  // ハイライト付きHTMLを構築
+  let html = '';
+  let lastIndex = 0;
+
+  searchMatches.forEach((matchPos, i) => {
+    html += escapeHtml(content.substring(lastIndex, matchPos));
+    const matchText = content.substring(matchPos, matchPos + query.length);
+    const cls = i === searchMatchIndex ? 'search-hl search-hl-current' : 'search-hl';
+    html += `<mark class="${cls}">${escapeHtml(matchText)}</mark>`;
+    lastIndex = matchPos + query.length;
+  });
+
+  html += escapeHtml(content.substring(lastIndex));
+  overlay.innerHTML = html;
+
+  // スクロール同期
+  overlay.scrollTop = elements.memoContent.scrollTop;
 }
 
 function replaceOne() {
@@ -1086,6 +1141,13 @@ elements.searchText.addEventListener('input', () => {
 elements.findNextBtn.addEventListener('click', findNext);
 elements.replaceBtn.addEventListener('click', replaceOne);
 elements.replaceAllBtn.addEventListener('click', replaceAll);
+
+// textareaスクロール同期（オーバーレイも一緒にスクロール）
+elements.memoContent.addEventListener('scroll', () => {
+  if (!elements.searchHighlightOverlay.classList.contains('hidden')) {
+    elements.searchHighlightOverlay.scrollTop = elements.memoContent.scrollTop;
+  }
+});
 elements.exportBtn.addEventListener('click', exportMemo);
 elements.deleteBtn.addEventListener('click', deleteMemo);
 

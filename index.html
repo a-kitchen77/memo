@@ -217,6 +217,32 @@
       margin-bottom: 1.5em !important;
       /* 段落間に余白を追加 */
     }
+
+    /* 検索ハイライトオーバーレイ */
+    #searchHighlightOverlay {
+      font-size: 16px;
+      line-height: 1.625;
+      color: transparent;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+
+    .search-hl {
+      background-color: rgba(255, 235, 59, 0.45);
+      color: transparent;
+      border-radius: 2px;
+    }
+
+    .search-hl-current {
+      background-color: rgba(255, 152, 0, 0.6);
+    }
+
+    #memoContent.search-active {
+      background: transparent !important;
+      caret-color: black;
+    }
   </style>
 </head>
 
@@ -500,9 +526,13 @@
 
         <!-- 4. エディタエリア (内部スクロール・Flex Grow) -->
         <div id="editorContainer" class="flex-1 relative overflow-hidden bg-ios-card">
+          <!-- 検索ハイライトオーバーレイ（textareaの裏面） -->
+          <div id="searchHighlightOverlay" class="hidden absolute inset-0 px-4 py-3 pointer-events-none"
+            style="padding-bottom: 50vh; overflow: hidden;"></div>
+
           <textarea id="memoContent"
             placeholder="メモを入力...&#10;&#10;💡 Markdownで書けます：&#10;## 見出し&#10;**太字**&#10;- リスト&#10;- [ ] チェックボックス"
-            class="w-full h-full px-4 py-3 bg-ios-card text-base leading-relaxed resize-none focus:outline-none overflow-y-auto"
+            class="w-full h-full px-4 py-3 bg-ios-card text-base leading-relaxed resize-none focus:outline-none overflow-y-auto relative z-10"
             style="padding-bottom: 50vh; overscroll-behavior-y: contain;"></textarea>
 
           <div id="previewArea" class="hidden absolute inset-0 px-4 py-3 bg-ios-card overflow-y-auto markdown-body">
