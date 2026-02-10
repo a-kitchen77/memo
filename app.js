@@ -810,24 +810,33 @@ function escapeRegex(string) {
 // Markdown入力支援ツールバー
 // ========================================
 
-// 行頭に記号を挿入する共通関数
+// 行頭に記号を挿入する共通関数（複数行選択対応）
 function insertAtLineStart(prefix) {
   const textarea = elements.memoContent;
   const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
   const content = textarea.value;
 
-  // 現在の行の先頭を探す
-  let lineStart = start;
-  while (lineStart > 0 && content[lineStart - 1] !== '\n') {
-    lineStart--;
+  // 選択範囲の最初の行の先頭を探す
+  let blockStart = start;
+  while (blockStart > 0 && content[blockStart - 1] !== '\n') {
+    blockStart--;
   }
 
-  // 行頭に記号を挿入
-  textarea.value = content.substring(0, lineStart) + prefix + content.substring(lineStart);
+  // 選択範囲内のテキストを取得（行の先頭から）
+  const selectedBlock = content.substring(blockStart, end);
+  const lines = selectedBlock.split('\n');
 
-  // カーソル位置を調整
-  const newPos = start + prefix.length;
-  textarea.setSelectionRange(newPos, newPos);
+  // 各行の先頭にprefixを挿入
+  const newLines = lines.map(line => prefix + line);
+  const newBlock = newLines.join('\n');
+
+  textarea.value = content.substring(0, blockStart) + newBlock + content.substring(end);
+
+  // 選択範囲を維持（挿入分を考慮）
+  const newStart = start + prefix.length;
+  const newEnd = blockStart + newBlock.length;
+  textarea.setSelectionRange(newStart, newEnd);
   textarea.focus();
   updateCharCount();
 }
