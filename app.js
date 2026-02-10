@@ -251,6 +251,7 @@ const elements = {
 
   // New Buttons
   undoBtn: document.getElementById('undoBtn'),
+  selectAllCopyBtn: document.getElementById('selectAllCopyBtn'),
 
   markdownHelpBtn: document.getElementById('markdownHelpBtn'),
   markdownHelpModal: document.getElementById('markdownHelpModal'),
@@ -280,6 +281,7 @@ let searchMatches = [];
 let confirmCallback = null;
 let isPreviewMode = false;
 let editingFolderId = null; // null:新規作成, ID string:編集
+let isComposing = false; // IME入力中フラグ
 
 // ========================================
 // 描画関数
@@ -427,6 +429,8 @@ async function openEditor() {
   elements.searchReplacePanel.classList.remove('open');
   elements.inlineFolderCreate.classList.add('hidden');
   elements.editorModal.classList.add('open');
+  // スクロール位置をリセット
+  elements.memoContent.scrollTop = 0;
 }
 
 // 特定のフォルダにメモを追加
@@ -457,6 +461,8 @@ async function openMemo(memoId) {
   elements.searchReplacePanel.classList.remove('open');
   elements.inlineFolderCreate.classList.add('hidden');
   elements.editorModal.classList.add('open');
+  // スクロール位置を最上部にリセット
+  elements.memoContent.scrollTop = 0;
 }
 
 // エディタを閉じる
@@ -501,12 +507,14 @@ function toggleSearchReplace() {
   }
 }
 
-function findMatches() {
+// マッチ数のみ更新（フォーカス移動なし）— IME入力中も安全
+function findMatchesQuiet() {
   const query = elements.searchText.value;
   const content = elements.memoContent.value;
 
   if (!query) {
     searchMatches = [];
+    searchMatchIndex = 0;
     elements.searchInfo.textContent = '';
     return;
   }
@@ -521,12 +529,19 @@ function findMatches() {
     index += query.length;
   }
 
+  searchMatchIndex = 0;
   if (searchMatches.length > 0) {
-    searchMatchIndex = 0;
     elements.searchInfo.textContent = `${searchMatchIndex + 1} / ${searchMatches.length} 件`;
-    highlightMatch();
   } else {
     elements.searchInfo.textContent = '見つかりませんでした';
+  }
+}
+
+// マッチを検索してハイライト（フォーカス移動あり）— ボタンクリック用
+function findMatches() {
+  findMatchesQuiet();
+  if (searchMatches.length > 0) {
+    highlightMatch();
   }
 }
 
@@ -1016,6 +1031,33 @@ function closeMarkdownHelp() {
 }
 
 // ========================================
+// 全選択+コピー
+// ========================================
+async function selectAllAndCopy() {
+  const textarea = elements.memoContent;
+  const content = textarea.value;
+
+  if (!content) {
+    showToast('⚠️ コピーするテキストがありません');
+    return;
+  }
+
+  // テキストを全選択
+  textarea.focus();
+  textarea.select();
+
+  // クリップボードにコピー
+  try {
+    await navigator.clipboard.writeText(content);
+    showToast('📋 全文をコピーしました！');
+  } catch (e) {
+    // フォールバック
+    document.execCommand('copy');
+    showToast('📋 全文をコピーしました！');
+  }
+}
+
+// ========================================
 // イベントリスナー
 // ========================================
 elements.newMemoBtn.addEventListener('click', openEditor);
@@ -1023,7 +1065,15 @@ elements.addFolderBtn.addEventListener('click', showFolderModal);
 elements.closeEditor.addEventListener('click', closeEditor);
 elements.memoContent.addEventListener('input', updateCharCount);
 elements.toggleSearchReplace.addEventListener('click', toggleSearchReplace);
-elements.searchText.addEventListener('input', findMatches);
+// 検索ボックス: IME入力対応
+elements.searchText.addEventListener('compositionstart', () => { isComposing = true; });
+elements.searchText.addEventListener('compositionend', () => {
+  isComposing = false;
+  findMatchesQuiet();
+});
+elements.searchText.addEventListener('input', () => {
+  if (!isComposing) findMatchesQuiet();
+});
 elements.findNextBtn.addEventListener('click', findNext);
 elements.replaceBtn.addEventListener('click', replaceOne);
 elements.replaceAllBtn.addEventListener('click', replaceAll);
@@ -1131,6 +1181,9 @@ elements.insertBoldBtn.addEventListener('click', insertBold);
 elements.insertQuoteBtn.addEventListener('click', insertQuote);
 // elements.insertCheckboxBtn.addEventListener('click', insertCheckbox); // Removed
 elements.insertHrBtn.addEventListener('click', insertHr);
+
+// 全選択+コピー
+elements.selectAllCopyBtn.addEventListener('click', selectAllAndCopy);
 
 // Undo
 elements.undoBtn.addEventListener('click', () => {
