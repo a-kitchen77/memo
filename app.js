@@ -573,13 +573,29 @@ function highlightMatch() {
 
   const pos = searchMatches[searchMatchIndex];
   const textarea = elements.memoContent;
+  const query = elements.searchText.value;
 
-  // スクロール位置を計算（フォーカスなし）
+  // ミラーdivを使って正確なスクロール位置を計算
+  const mirror = document.createElement('div');
+  const cs = getComputedStyle(textarea);
+  mirror.style.cssText = [
+    'position:absolute', 'visibility:hidden', 'white-space:pre-wrap',
+    'word-wrap:break-word', 'overflow-wrap:break-word',
+    `width:${textarea.clientWidth}px`,
+    `font-family:${cs.fontFamily}`, `font-size:${cs.fontSize}`,
+    `line-height:${cs.lineHeight}`, `letter-spacing:${cs.letterSpacing}`,
+    `padding:${cs.padding}`, `border:${cs.border}`, 'box-sizing:border-box'
+  ].join(';');
+
+  // マッチ位置までのテキストをミラーに入れてオフセットを測定
   const textBefore = textarea.value.substring(0, pos);
-  const linesBefore = textBefore.split('\n').length - 1;
-  const style = getComputedStyle(textarea);
-  const lineHeight = parseFloat(style.lineHeight) || 26;
-  const targetScroll = Math.max(0, linesBefore * lineHeight - textarea.clientHeight / 3);
+  mirror.textContent = textBefore;
+  document.body.appendChild(mirror);
+  const matchTop = mirror.scrollHeight;
+  document.body.removeChild(mirror);
+
+  // マッチ位置が画面中央付近に来るようにスクロール
+  const targetScroll = Math.max(0, matchTop - textarea.clientHeight / 3);
   textarea.scrollTop = targetScroll;
 
   // ハイライトオーバーレイを更新
@@ -616,8 +632,10 @@ function updateSearchHighlight() {
   html += escapeHtml(content.substring(lastIndex));
   overlay.innerHTML = html;
 
-  // スクロール同期
-  overlay.scrollTop = elements.memoContent.scrollTop;
+  // スクロール同期（次フレームで確実に同期）
+  requestAnimationFrame(() => {
+    overlay.scrollTop = elements.memoContent.scrollTop;
+  });
 }
 
 function replaceOne() {
@@ -1289,3 +1307,19 @@ async function init() {
 }
 
 init();
+
+// ========================================
+// Visual Viewport API (iOS keyboard対策)
+// ========================================
+if (window.visualViewport) {
+  const modalContent = document.querySelector('#editorModal .modal-content');
+  function updateViewport() {
+    const vv = window.visualViewport;
+    modalContent.style.setProperty('--vvh-px', vv.height + 'px');
+    modalContent.style.setProperty('--vvo-px', vv.offsetTop + 'px');
+  }
+  window.visualViewport.addEventListener('resize', updateViewport);
+  window.visualViewport.addEventListener('scroll', updateViewport);
+  // 初期値設定
+  updateViewport();
+}

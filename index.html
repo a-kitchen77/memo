@@ -104,6 +104,12 @@
       transform: translateY(0);
     }
 
+    /* iOS keyboard: Visual Viewport tracking for editor modal */
+    #editorModal.open .modal-content {
+      height: var(--vvh-px, 100dvh) !important;
+      transform: translateY(var(--vvo-px, 0px)) !important;
+    }
+
     .search-replace-panel {
       max-height: 0;
       overflow: hidden;
@@ -320,7 +326,7 @@
 
     <!-- メモエディタモーダル -->
     <div id="editorModal" class="modal-overlay fixed inset-0 z-50 bg-black/40">
-      <div class="modal-content absolute inset-0 bg-ios-bg flex flex-col h-[100dvh] overflow-hidden">
+      <div class="modal-content absolute top-0 left-0 w-full bg-ios-bg flex flex-col overflow-hidden">
 
         <!-- 1. コンパクトナビゲーション (常時固定) -->
         <header
@@ -527,8 +533,8 @@
         <!-- 4. エディタエリア (内部スクロール・Flex Grow) -->
         <div id="editorContainer" class="flex-1 relative overflow-hidden bg-ios-card">
           <!-- 検索ハイライトオーバーレイ（textareaの裏面） -->
-          <div id="searchHighlightOverlay" class="hidden absolute inset-0 px-4 py-3 pointer-events-none"
-            style="padding-bottom: 50vh; overflow: hidden;"></div>
+          <div id="searchHighlightOverlay" class="hidden absolute inset-0 px-4 py-3 pointer-events-none no-scrollbar"
+            style="padding-bottom: 50vh; overflow-y: auto;"></div>
 
           <textarea id="memoContent"
             placeholder="メモを入力...&#10;&#10;💡 Markdownで書けます：&#10;## 見出し&#10;**太字**&#10;- リスト&#10;- [ ] チェックボックス"
