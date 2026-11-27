@@ -72,8 +72,8 @@
     }
 
     .accordion-content.open {
-      max-height: 2000px;
-      transition: max-height 0.5s ease-in;
+      /* 以前は max-height: 2000px で、メモ約28件を超えると切れて見えなくなっていた */
+      max-height: none;
     }
 
     .folder-arrow {
